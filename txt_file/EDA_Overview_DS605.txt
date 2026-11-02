@@ -1,0 +1,131 @@
+DS605 MSc Data Science — Household Energy Consumption Prediction
+EDA OVERVIEW & PROJECT NOTES
+Updated: 02 November 2026
+============================================================
+
+1. PROJECT PURPOSE
+------------------
+Dataset: UCI Appliances Energy Prediction (real-world building sensors and weather measurements, January-May 2016).
+Goal: Understand household energy usage through data quality checking, exploratory data analysis, statistics, data mining, feature engineering, PCA, and machine learning.
+Prediction target: Total_Energy = Appliances + lights.
+Unit: Wh per 10-minute observation; after aggregating, Wh per 1-hour observation.
+Important: The target measures recorded appliances + lighting consumption, not all possible home heating/cooling loads.
+
+2. DATASETS / PROJECT FILES
+---------------------------
+df_10min: 19,735 observations. Most recent reported dataframe has 63 columns, including generated EDA flags and date/time columns.
+df_1hour: Derived from df_10min for planned data mining, PCA and modelling.
+Planned saved CSV: data/energy_1hour.csv
+Notebooks: notebook/dataset_understanding.ipynb, notebook/EDA.ipynb
+Plots: EDA_graph/ and/or notebook/EDA_graph/ (choose one consistent directory).
+
+3. EDA WORKFLOW AND METHODS
+---------------------------
+- Inspected schema, data types, date/time ordering, missing data and duplicated records.
+- Computed five-number summaries, means, medians, variances, standard deviations and skewness.
+- Explored histograms, boxplots, daily patterns and differences across hours and weekends.
+- Investigated IQR outliers: lower = Q1 - 1.5*IQR; upper = Q3 + 1.5*IQR.
+- Compared high-energy events with sensor and weather flags using crosstabs and conditional rates.
+- Calculated Pearson (linear), Spearman (monotonic) and Kendall (rank concordance) correlations.
+- Investigated temporal dependence and autocorrelation.
+- Statistical outlier does NOT automatically mean a sensor error. Leave original values unchanged unless evidence justifies a correction.
+
+4. ENERGY-RELATED OBSERVATIONS
+------------------------------
+- At 10-minute resolution, Total_Energy = Appliances + lights.
+- Historic 10-minute high-energy threshold used in EDA: Total_Energy > 175 Wh.
+- High-energy spikes were explored by hour/day and temporal neighbors. Some jumps may be real events; some may warrant further validation.
+- Hourly aggregation smooths short spikes but does not prove or correct measurement errors.
+- Energy-derived outlier flags MUST NOT be used as model input predictors because of target leakage.
+- Weekday/weekend high-energy-event percentages previously observed around 10.82% / 10.87%; that difference is small.
+
+5. INDOOR TEMPERATURE AND HUMIDITY FINDINGS
+-------------------------------------------
+T1 (kitchen temp): weak Pearson correlation with energy ~+0.053.
+RH_1 (kitchen humidity): mean ~40.26%, SD ~3.98%; weak energy correlation.
+T2 (living temp): Pearson vs energy ~+0.118.
+RH_2 (living humidity): vs T2 Pearson ~-0.166 at individual 10-minute records; hour-of-day aggregated temperature/humidity profiles are much more negatively correlated (~-0.939), which does not mean individual records are strongly associated.
+T3 (laundry temp): mean ~22.27 C; 217 IQR temperature outliers (~1.10%).
+RH_3 (laundry humidity): mean ~39.24%; weak energy correlation.
+T4 (office temp): mean ~20.86 C; weak energy correlation.
+RH_4 (office humidity): mean ~39.03%; no IQR outliers in the examined distribution.
+T5 (bathroom temp): mean ~19.59 C; vs T_out Pearson ~+0.651.
+RH_5 (bathroom humidity): mean ~50.95%; strongly right-skewed (+1.87), ~1,314 high IQR observations, often around 20:00-21:00; occupancy explanation remains a hypothesis.
+T6 (outside-north sensor): mean ~7.91 C; vs T_out Pearson ~+0.975 (high redundancy).
+RH_6: mean ~54.61%, large SD ~31.15; investigate possible 1% sensor-floor readings if needed.
+T7 (ironing room): mean ~20.27 C; weak energy relationship.
+RH_7: mean ~35.39%; 42 high IQR outliers; some associated with high outdoor humidity.
+T8 (teenager room): mean ~22.03 C; 71 low-temperature IQR outliers, mostly January 23; only 8 overlapped high energy.
+RH_8 (teenager humidity): mean ~42.94%, 17 high IQR outliers. None of the 71 T8 low-temperature outliers coincided with the 17 RH8 high outliers.
+T9 (parents room): mean 19.4858 C, SD 2.0147, IQR 2.60, skew +0.3827; no IQR outliers (maximum 24.50 C approximately equals upper fence).
+T9 vs Total_Energy: Pearson -0.0021, Spearman +0.1328, Kendall +0.0924.
+T9 vs T_out: Pearson +0.6682, Spearman +0.6360, Kendall +0.4580.
+T9 vs T8: Pearson +0.8693, Spearman +0.8717, Kendall +0.6961. Strong positive co-movement; does NOT mean identical readings or causality. Potentially redundant predictors.
+RH_9 (parents humidity): mean 41.5524%, SD 4.1515, IQR 5.8381, skew +0.3689, boundaries ~29.74%-53.10%.
+RH_9 flags: 17 low outliers, 4 high outliers. All 17 low outliers occurred consecutively on April 28, 2016, 18:10-20:50; 6/17 had Total_Energy >175 Wh. Compare: normal RH9 high-energy rate 11.18%, low outliers 35.29%, high outliers 0/4. Small correlated samples, one sustained event: do not interpret as 17 independent cases or as causal evidence.
+
+6. WEATHER VARIABLE FINDINGS
+----------------------------
+T_out (Chievres weather-station temp): min -5 C, Q1 3.6667, median 6.9167, Q3 10.4083, max 26.10, mean 7.4117, SD 5.3174, skew +0.5343.
+T_out IQR fences ~-6.45 C, +20.52 C. Negative -5 C is NOT an IQR outlier. There are 436 high-T_out observations; 103 coincide with high energy. High energy rate: high T_out 23.62% (103/436), normal T_out 10.92% (2107/19299). Association, not proof hot weather caused consumption.
+RH_out (outdoor humidity): min 24%, Q1 70.3333%, median 83.6667%, Q3 91.6667%, max 100%, mean 79.7504%, SD 14.9011, skew -0.9230.
+RH_out IQR fences: ~38.33% and ~123.67% (upper bound is mathematical, physically RH cannot exceed 100%). 239 low RH_out flags, zero high. High-energy rate in low-RH_out subset 6.69% (16/239) vs normal 11.25% (2194/19496).
+RH_out vs T_out: Pearson -0.5742, Spearman -0.4976, Kendall -0.3488.
+RH_out vs Total_Energy: Pearson -0.1444, Spearman -0.2480, Kendall -0.1727.
+T_out vs Total_Energy: Pearson +0.0917, Spearman +0.1944, Kendall +0.1353.
+Press_mm_hg: min 729.30, Q1 750.9333, median 756.10, Q3 760.9333, max 772.30; mean 755.5226, SD 7.3994, skew -0.4204. IQR fences ~735.93 to 775.93; 219 low-pressure outliers, zero high. Early displayed records from Jan 11 showed smooth pressure increase; likely sustained weather conditions, not isolated spikes.
+Pressure vs Total_Energy: Pearson -0.0351, Spearman -0.0905, Kendall -0.0643 (near zero).
+Pressure vs Windspeed Pearson -0.2350; pressure vs Tdewpoint Pearson -0.2441.
+Windspeed: min 0 m/s, Q1 2, median 3.6667, Q3 5.5, max 14; mean 4.0398, SD 2.4512, skew +0.86. IQR fences -3.25 and 10.75 m/s; high-wind readings >10.75 are outliers statistically but physically possible.
+Windspeed vs Total_Energy Pearson about +0.09.
+Visibility vs Total_Energy: Pearson +0.0017, Spearman +0.0010, Kendall +0.0005.
+Tdewpoint vs Total_Energy: Pearson +0.0123, Spearman +0.0658, Kendall +0.0454.
+T_out vs Tdewpoint Pearson ~+0.79 (potential redundancy).
+rv1 vs Total_Energy: Pearson -0.0109, Spearman -0.0078, Kendall -0.0055.
+rv2 vs Total_Energy: same values. Verified in notebook: (rv1 == rv2) on all rows = True; perfectly duplicated random predictors. Candidate for excluding both; at minimum never use both together when interpreting linear coefficients/PCA.
+
+7. IMPORTANT INTERPRETATION RULES
+--------------------------------
+- Correlation does not mean causation.
+- Overall near-zero correlation can coexist with patterns during particular conditions.
+- Compare conditional percentages using each group's denominator, not raw overlap counts alone.
+- Temperature and relative humidity are related physically; relative humidity is not the same as absolute moisture content.
+- The 10-minute rows have time dependence; contiguous outliers are often a single event, not independent events.
+- High energy consumption may reflect daily routines and weather confounding. Control for hour/season before drawing conclusions.
+- Do not drop environmental outliers solely because they are beyond IQR fences.
+
+8. HOURLY AGGREGATION PLAN (IMPORTANT)
+--------------------------------------
+Output dataframe: df_1hour.
+Energy (Appliances, lights, Total_Energy): SUM of six 10-minute Wh observations.
+Indoor T/RH and weather measurements: MEAN across six observations.
+Feature-outlier flags: MAX across six observations (1 = at least one observation flagged within the hour).
+Time-derived variables: rebuild from hourly datetime (hour, weekday, weekend).
+Keep ONLY complete 1-hour bins of six 10-minute samples as previously planned.
+Keep original 10-minute dataset and timestamps for traceability.
+Flags generated at 10-minute scale describe any event WITHIN an hour; they are not the same as flags computed from the hourly-variable distribution.
+Expected complete-hour count previously observed: ~3,289; verify actual after running aggregation.
+Export from notebook working directory: ../data/energy_1hour.csv (verify Path.cwd()).
+
+9. MODELLING / PCA PRECAUTIONS
+------------------------------
+- Split chronologically, not by random shuffling, for time-series energy prediction.
+- Fit scaling, imputers, PCA, feature selection and any training-derived IQR thresholds on training data only; then transform validation/test.
+- Avoid using Total_Energy, Appliances, lights, or flags calculated from these as input X when predicting Total_Energy.
+- Avoid creating labels or features from the same hour's target when actual prediction is intended before observing that hour.
+- Duplicate rv1 and rv2 convey no independent information; likely remove both as an evaluated experiment.
+- A small individual correlation does not establish that a feature has zero incremental predictive value; compare validated models with and without features.
+- Decide forecasting setup explicitly: predict energy in current hour from contemporaneously available inputs vs forecast NEXT hour from past information. This changes which predictors are legitimately available.
+
+10. PROPOSED NEXT STEPS
+-----------------------
+1) Verify exported hourly CSV: shape, exactly 6 source observations/hour, hourly energy sums, no unintended duplicate columns or nulls.
+2) Establish forecasting horizon, target, train/validation/test date ranges and leakage-safe feature set.
+3) Explore hourly distributions, temporal patterns and time-aware correlations.
+4) Data mining / pattern discovery on TRAIN data; assess seasonal and event relationships.
+5) Feature engineering and feature selection; inspect redundancy and random features.
+6) PCA on standardized TRAIN features, not on the target or target-derived flags; interpret explained variance and components.
+7) Fit a baseline time-aware model, then compare alternatives with MAE, RMSE and R2.
+8) Interpret results and make actionable decisions with realistic limits.
+
+This is a working study summary of findings shared in the project conversation, not a substitute for the notebooks, raw dataset, or reproducible computation.
