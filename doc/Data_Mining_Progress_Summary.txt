@@ -1,0 +1,380 @@
+HOUSEHOLD ENERGY CONSUMPTION PREDICTION — DATA MINING PROGRESS
+MSc Data Science | DS605 | Project Progress Notes
+Updated: 04 November 2026
+
+======================================================================
+1. PROJECT PURPOSE
+======================================================================
+Dataset: UCI Appliances Energy Prediction, recorded in a house in
+Stambruges, Belgium (January–May 2016).
+
+Our prediction target is:
+    Total_Energy = Appliances + lights
+
+For hourly data, Total_Energy is the SUM of available 10-minute Wh
+measurements in each hour, NOT their average.
+
+Data Mining Goal 1:
+    Investigate unusually high energy consumption and distinguish
+    plausible genuine events from possible erroneous measurements.
+
+IMPORTANT: Statistical anomalies do not automatically indicate sensor
+errors. Environmental associations or warming after energy use do not
+prove the accuracy of individual energy readings.
+
+======================================================================
+2. DATASETS AND NOTEBOOK
+======================================================================
+Original high-resolution file: ../data/energy_10min.csv
+Hourly file:                   ../data/energy_1hour.csv
+Updated Data Mining file:      ../data/energy_1hour_data_mining.csv
+Notebook:                      Data_Mining.ipynb
+Plots:                         ../EDA_graph/
+
+Saved Data Mining CSV reported by user:
+    3,289 rows x 105 columns
+
+Hourly energy checked against the 10-minute series:
+    3,289 / 3,289 hourly sums matched.
+
+======================================================================
+3. BASELINE OUTLIER DETECTION (IQR)
+======================================================================
+Q1 = 310 Wh
+Q3 = 710 Wh
+IQR = 400 Wh
+Lower boundary = -290 Wh
+Upper boundary = 1,310 Wh
+
+High-energy outlier condition:
+    Total_Energy > 1310 Wh
+
+High-energy outliers: 310 / 3,289 = about 9.43%
+Other observations: 2,979
+
+No energy observations were deleted or replaced.
+
+Outliers by hour were especially common around 17:00 (43) and
+18:00 (51), but counts alone do not prove higher hour-specific rates.
+
+======================================================================
+4. HYPOTHESIS 1 — COLD OUTDOOR TEMPERATURE
+======================================================================
+Cold condition: T_out <= 10 deg C
+
+Cold: 2,370 observations, 199 outliers, 8.3966% outlier rate
+Warm:   919 observations, 111 outliers, 12.0783% outlier rate
+
+One-sided two-proportion Z-test, alternative: cold rate > warm rate
+    Z = -3.2426
+    p = 0.999408
+    Decision: Fail to reject H0 at alpha = 0.05.
+
+Observed rate was HIGHER in warm weather, contrary to the hypothesis.
+
+Created cold-weather candidate flag (current preferred name):
+    H1_Likely_Genuine_Candidate
+199 observations met the cold-weather plus high-energy conditions.
+This is only an environmental candidate flag, not a validated label.
+
+======================================================================
+5. HYPOTHESIS 2 — WEEKENDS
+======================================================================
+Dataset already had the is_weekend Boolean column; reused it.
+
+Overall comparison:
+    Weekday: 2,377 hours, 224 outliers, 9.4236%
+    Weekend:   912 hours,  86 outliers, 9.4298%
+    Z = 0.0054; p = 0.497833
+    Decision: Fail to reject H0.
+
+Exploratory daytime comparison (08:00–16:00):
+    Weekday: 891 hours, 117 outliers, 13.1313%
+    Weekend: 342 hours,  52 outliers, 15.2047%
+    Z = 0.9478; p = 0.171628
+    Decision: Fail to reject H0.
+
+Weekend daytime average consumption was often higher, but the
+outlier-rate hypothesis was not statistically supported.
+
+The daytime hypothesis was selected after viewing the data; it is
+exploratory, not an independently pre-registered hypothesis.
+
+======================================================================
+6. FEATURE ENGINEERING — FLOOR TEMPERATURES AND HUMIDITIES
+======================================================================
+Created/used:
+    Floor_1_Temp
+    Floor_2_Temp
+    Floor_1_Temp_Diff = Floor_1_Temp - T_out
+    Floor_2_Temp_Diff = Floor_2_Temp - T_out
+    Floor_1_Humidity
+    Floor_2_Humidity
+    Floor_1_NextHour_Change = Floor_1_Temp(t+1)-Floor_1_Temp(t)
+    Floor_2_NextHour_Change = Floor_2_Temp(t+1)-Floor_2_Temp(t)
+
+Negative Celsius outdoor temperatures are valid and were preserved.
+193 hourly observations had T_out < 0 deg C.
+
+NOTE: The floor sensor grouping used in the notebook was provisional
+and should be verified against the original building floor plan.
+Future-hour change features may be used for RETROSPECTIVE review, but
+not as predictors of current-hour energy in a deployable model,
+because that would leak future information.
+
+Floor temperature comparison:
+    Floor 1 mean = 21.43 deg C
+    Floor 2 mean = 20.45 deg C
+    Average difference ~0.99 deg C
+    Floor 1 warmer: 2,923 hours
+    Floor 2 warmer:   366 hours
+
+These are room temperature summaries, not floor-level energy meters.
+
+======================================================================
+7. HYPOTHESIS 3 — LARGE INDOOR/OUTDOOR TEMPERATURE DIFFERENCE
+======================================================================
+Large difference defined as greater than each floor's Q3.
+
+Floor 1:
+    Q3 = 16.79 deg C
+    High difference: 822 observations, 57 outliers, 6.9343%
+    Other difference: 2,467 observations, 253 outliers, 10.2554%
+    Z = -2.8224; p = 0.997616
+    Fail to reject H0 for the proposed positive association.
+
+Floor 2:
+    Q3 = 15.98 deg C
+    High difference: 822 observations, 47 outliers, 5.7178%
+    Other difference: 2,467 observations, 263 outliers, 10.6607%
+    Z = -4.2007; p = 0.999987
+    Fail to reject H0 for the proposed positive association.
+
+Pearson correlations with Total_Energy:
+    Floor_1_Temp_Diff: -0.1591
+    Floor_2_Temp_Diff: -0.1750
+
+A later clipped, nonnegative first-floor heating-gap proxy gave:
+    Mean gap = 14.021 deg C
+    Pearson r = -0.0970
+    Spearman rho = -0.1591
+    Mean energy (gap above median): 573.08 Wh
+    Mean energy (gap at/below median): 644.66 Wh
+
+These observations do not support the simple claim that larger
+heating gap leads to higher recorded Appliances + lights energy.
+Building heat loss can rise with temperature difference, but our
+measured target does not necessarily include all heating-system energy.
+
+By hour, the heating-gap Pearson correlations were positive at
+18:00 (+0.2704), 19:00 (+0.3535), 20:00 (+0.3208), and
+21:00 (+0.4536), as exploratory results.
+
+======================================================================
+8. HYPOTHESIS 4 — RELATIVE HUMIDITY
+======================================================================
+Humidity descriptive statistics (all 3,289 observations complete):
+    Floor 1: mean 39.97%, Q3 42.43%
+    Floor 2: mean 41.97%, Q3 45.25%
+    Outdoor: mean 79.75%, Q3 91.58%
+
+High humidity = above feature-specific Q3.
+
+Floor 1:
+    High RH: 822 obs, 98 outliers, 11.9221%
+    Other RH: 2,467 obs, 212 outliers, 8.5934%
+    Z = 2.8289; p = 0.002336
+    Reject H0 in preliminary one-sided Z-test.
+
+Floor 2:
+    High RH: 822 obs, 81 outliers, 9.8540%
+    Other RH: 2,467 obs, 229 outliers, 9.2825%
+    Z = 0.4857; p = 0.313601
+    Fail to reject H0.
+
+Outdoor:
+    High RH: 811 obs, 52 outliers, 6.4118%
+    Other RH: 2,478 obs, 258 outliers, 10.4116%
+    Z = -3.3839; p = 0.999643
+    Fail to reject H0 for increased rate at high RH.
+
+These are group associations, not proof of individual outlier
+validity or a causal role for humidity.
+
+======================================================================
+9. TEMPORAL EVIDENCE — WARMING AFTER HIGH-ENERGY HOURS
+======================================================================
+First-floor warming in following hour:
+    High-energy: 265 / 310 = 85.4839%
+    Normal-energy: 885 / 2,978 = 29.7179%
+    Mean change after high energy = +0.2636 deg C
+
+Second-floor warming in following hour:
+    High-energy: 232 / 310 = 74.8387%
+    Normal-energy: 1,009 / 2,978 = 33.8818%
+    Mean change after high energy = +0.0779 deg C
+
+Outlier breakdown:
+    Both floors warm: 203 (65.48%)
+    Only Floor 1 warm: 62 (20.00%)
+    Only Floor 2 warm: 29 (9.35%)
+    Neither floor warm: 16 (5.16%)
+    Total: 310
+
+Both-floor warming comparison:
+    High-energy: 203 / 310 = 65.4839%
+    Normal-energy: 634 / 2,978 = 21.2895%
+    Risk difference = 0.4419
+    Relative risk = 3.0759
+
+Day-block bootstrap (2,000 samples) yielded:
+    95% CI relative risk: [2.7393, 3.4384]
+    95% CI risk difference: [0.3840, 0.4940]
+
+Interpretation: Strong association between high energy and later
+warming, but not direct proof of heater operation or meter accuracy.
+Possible shared causes include time of day, occupancy, activities,
+solar gains, and heating/ventilation behavior.
+
+======================================================================
+10. INDIVIDUAL 10-MINUTE INVESTIGATIONS
+======================================================================
+A. 2016-01-24 08:00
+    Hourly Total_Energy = 3,740 Wh
+    10-minute values = [360, 390, 610, 870, 700, 810] Wh
+    Hourly sum matched.
+    Largest interval contributed 870/3740 = 23.26%.
+    Other hours afterward also had elevated energy; indoor temperature
+    later increased. Labeled provisionally Likely_Genuine.
+
+B. 2016-05-13 16:00
+    Hourly Total_Energy = 2,110 Wh
+    10-minute values = [350, 300, 450, 450, 290, 270] Wh
+    Hourly sum matched.
+    Largest interval contributed 450/2110 = 21.33%.
+    Several other high-energy hours occurred the same afternoon.
+    Labeled provisionally Likely_Genuine.
+
+Both are plausible high-consumption events, not independently
+validated electricity meter readings.
+
+======================================================================
+11. MULTIVARIATE KNN DISTANCE ANALYSIS
+======================================================================
+Analyzed environmental unusualness using seven inputs:
+    Floor_1_Temp
+    Floor_2_Temp
+    T_out
+    Floor_1_Humidity
+    Floor_2_Humidity
+    RH_out
+    Windspeed
+
+Used StandardScaler fitted to normal-energy reference observations
+(2,979 rows), then transformed the remaining high-energy cases.
+Used KNN with five nearest normal-reference observations and mean
+Euclidean distance in standardized feature space.
+
+For the initial 107 cases, KNN distance statistics:
+    Mean ~0.7283; median ~0.6812; max ~1.8034.
+
+KNN identifies unusual environmental combinations; it is NOT a
+validated classifier of true versus false energy readings.
+
+A later run targeted 106 remaining Not_Reviewed high-energy outliers.
+An illustrative export was proposed at:
+    ../data/remaining_106_outliers.csv
+with date, Total_Energy, T_out, KNN_Mean_Distance.
+
+======================================================================
+12. AUTOMATIC 10-MINUTE REVIEW OF THE REMAINING 106
+======================================================================
+Instead of reviewing 106 x 6 readings manually, used automatic
+hourly grouping of the 10-minute file and computed:
+    Interval_Count
+    Calculated_Hourly_Energy
+    Max_10min_Energy
+    Mean_10min_Energy
+    Std_10min_Energy
+    Max_Contribution_Pct
+    CV (coefficient of variation)
+    Complete_Hour
+    Energy_Matches
+
+Reported results:
+    Complete hours (six readings): 106/106
+    Hourly totals matching recalculation: 106/106
+    Mean largest-interval contribution: ~30.82%
+    Median largest-interval contribution: ~30.43%
+    Maximum largest-interval contribution: ~60.87%
+    Mean CV: ~0.584
+
+Interpretation: No missing intervals or summation discrepancies were
+found for these 106 hours. This supports data consistency but cannot
+verify the accuracy of the underlying 10-minute measurements.
+
+======================================================================
+13. OUTLIER STATUS AND RETENTION DECISION
+======================================================================
+Confirmed count from user after saving CSV:
+    Not_Reviewed:         2,979 (normal-energy observations)
+    Likely_Genuine:         204 (provisional evidence-supported)
+    Retained_Unverified:    106 (no confirmed error; retained)
+    Total:                3,289
+
+The user then requested a different, more favorable status label for
+the remaining 106. Code was provided to change:
+    Retained_Unverified -> Likely_Genuine_Unverified
+
+IMPORTANT: The execution of that later rename was not confirmed in
+chat. Therefore, the last VERIFIED saved CSV status counts are the
+204 / 106 / 2,979 values above. If the rename was run, the CSV may
+instead contain Likely_Genuine_Unverified for those 106.
+
+The 204 likely-genuine label includes 203 both-floor-warming cases
+plus the separately reviewed May 13 case; January 24 already overlaps
+the 203. Classification is PROVISIONAL.
+
+Data treatment decision:
+    RETAIN all 310 high-energy outliers for the prediction project.
+    No total-energy readings were corrected, deleted, or replaced.
+    Do not claim that all 310 were independently proven genuine.
+
+For clarity in future modeling, consider:
+    Outlier_Status (review evidence)
+    Outlier_Treatment (Retain / Correct / Remove)
+    And label the 2,979 non-outliers as Normal, rather than
+    Not_Reviewed, if that distinction is useful.
+
+======================================================================
+14. SAVED FILE AND DATA SHAPE
+======================================================================
+User reported successful save:
+    File: ../data/energy_1hour_data_mining.csv
+    Shape: (3289, 105)
+
+This file contains original hourly observations and numerous EDA /
+Data Mining engineered features and review flags.
+
+For ML evaluation, ensure features using NEXT-HOUR temperatures are
+not used as predictors at the current timestamp. Avoid leaking
+review-derived labels, post-event data, or target-derived columns into
+predictor X. Use time-aware train/validation/test splits.
+
+======================================================================
+15. NEXT STEPS
+======================================================================
+1. Verify actual Outlier_Status counts in the saved CSV after any
+   renaming, and confirm final labels are understood as provisional.
+2. Preserve the original 10-minute and hourly files unchanged.
+3. Document retained outlier decisions, feature definitions, and
+   sensor-to-floor mappings.
+4. If further error detection is needed, prioritize cases with large
+   single-interval contributions, unusual KNN distances, sensor
+   inconsistencies, or implausible average electrical power.
+5. Continue Data Mining with pattern discovery / clustering and then
+   feature engineering, PCA if appropriate, and ML modeling.
+6. Evaluate peak-energy prediction performance specifically, because
+   removing genuine high-consumption events could damage the model.
+
+END OF DATA MINING PROGRESS SUMMARY
