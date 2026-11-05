@@ -1,0 +1,231 @@
+DS605 HOUSEHOLD ENERGY PREDICTION
+PCA PROGRESS SUMMARY
+Date: 5 November 2026
+
+1. STARTING DATA AND PREDICTION TASK
+
+Input file: data/energy_1hour_fe_ready.csv
+Dataset shape: 3,289 rows and 43 columns.
+Contents: 41 predictors, date, and Total_Energy.
+
+Goal: estimate current-hour Total_Energy using current-hour measurements.
+Target unit: Wh per hour.
+
+2. CHRONOLOGICAL TRAIN-TEST SPLIT
+
+Training: 2,631 hours (earliest 80%).
+Period: 2016-01-11 17:00 to 2016-04-30 07:00.
+
+Testing: 658 hours (latest 20%).
+Period: 2016-04-30 08:00 to 2016-05-27 17:00.
+
+Scaling and PCA were fitted on training measurements only.
+Test measurements were transformed using the same fitted objects.
+Total_Energy was excluded from PCA.
+
+3. PCA MATHEMATICS STUDIED
+
+Standardization:
+z = (measurement - training mean) / training standard deviation.
+
+Training standardized features had means approximately 0 and standard
+deviations approximately 1. Test statistics need not equal these values.
+
+Covariance:
+S = Z_centered.T @ Z_centered / (n - 1)
+
+Covariance describes how measurements vary together.
+Positive covariance indicates shared movement; it does not prove causation.
+
+Eigenvalue equation:
+S w = lambda w
+
+Eigenvectors provide component directions and feature weights.
+Eigenvalues measure variance captured by each component.
+
+Component score:
+PC_k = sum(weight_jk * centered_standardized_feature_j)
+
+Explained variance ratio:
+EVR_k = eigenvalue_k / sum(all eigenvalues)
+
+Cumulative explained variance adds the ratios of successive components.
+
+PCA captures variation in inputs, not energy-prediction accuracy.
+95% variance does not mean 95% of observations or energy consumption.
+PCA does not create clusters.
+
+4. MODEL A: ORIGINAL 24 MEASUREMENTS
+
+PCA inputs:
+- T1 to T9
+- RH_1 to RH_9
+- T_out
+- Press_mm_hg
+- RH_out
+- Windspeed
+- Visibility
+- Tdewpoint
+
+Standardization was followed by covariance analysis and eigenvalue/
+eigenvector calculation. PCA feature weights were inspected.
+
+Selected cumulative explained variance:
+2 components: 63.0210%
+8 components: 90.5144%
+10 components: 93.9554%
+11 components: 95.2168%
+24 components: 100%
+
+Decision: retain 11 components.
+Variance omitted: 4.7832%.
+
+Model A inputs: PC1 to PC11 only.
+Training shape: (2631, 11).
+Testing shape: (658, 11).
+
+Final preprocessing objects:
+room_scaler and pca_11.
+
+5. MODEL B: SIX FLOOR/OUTDOOR MEASUREMENTS
+
+Selected inputs:
+- Floor_1_Temp
+- Floor_2_Temp
+- Floor_1_Humidity
+- Floor_2_Humidity
+- T_out
+- RH_out
+
+Existing floor averages were reused.
+A separate scaler and PCA were fitted for this feature set.
+
+Press_mm_hg, Windspeed, Visibility, and Tdewpoint were excluded from
+this version by project choice. Low correlation alone does not establish
+that a feature has no predictive value.
+
+Component | Individual variance % | Cumulative variance %
+PC1       | 43.3793               | 43.3793
+PC2       | 33.9052               | 77.2845
+PC3       | 13.6812               | 90.9657
+PC4       |  4.0413               | 95.0070
+PC5       |  2.7628               | 97.7698
+PC6       |  2.2302               | 100.0000
+
+Four components would retain approximately 95% variance.
+We chose all six components, retaining 100% of the six-feature variance.
+Keeping six components from six measurements rotates the representation;
+it does not reduce dimensionality or restore excluded room-level details.
+
+PC1 contrasts higher temperatures with lower relative humidities.
+PC2 mainly represents shared indoor humidity variation, with temperature
+contributions.
+
+PCA weights describe component directions, not importance for predicting
+energy. A component's signs may all reverse without changing its meaning.
+
+Final preprocessing objects:
+six_scaler and six_pca.
+
+6. MODEL B CALENDAR FEATURES
+
+Nine calendar features were added directly AFTER PCA:
+1. hour_sin
+2. hour_cos
+3. is_weekend
+4. is_afternoon_peak
+5. month_2
+6. month_3
+7. month_4
+8. month_5
+9. Weekend_Afternoon
+
+hour_sin = sin(2*pi*hour/24)
+hour_cos = cos(2*pi*hour/24)
+
+is_afternoon_peak = 1 for 15 <= hour < 19, otherwise 0.
+Weekend_Afternoon = is_weekend * is_afternoon_peak.
+
+January is represented by all four month indicators being zero.
+The six weekday dummy features were removed by user choice.
+Floor-temperature changes and Both_Floors_Warming were excluded.
+
+Calendar features remain directly interpretable inputs.
+They do not require PCA. Their numerical ranges are not the main reason
+for keeping them outside PCA.
+
+Model B final inputs:
+6 PCA scores + 9 calendar features = 15 predictors.
+
+Training shape: (2631, 15).
+Testing shape: (658, 15).
+
+7. FINAL MODEL DESIGNS
+
+Model A: 11 PCA scores only.
+Model B: 6 PCA scores plus nine calendar features.
+Both predict Total_Energy using the same training/test hours.
+
+No separate calendar-only Model C is planned.
+These designs differ in sensor selection and calendar inputs, so their
+comparison will not isolate the effect of PCA alone.
+
+8. SAVED CSV FILES
+
+Model A:
+data/energy_model_A_pca11.csv
+Confirmed shape: (3289, 14).
+Contains date, 11 PCA scores, Total_Energy, and split.
+
+Model B:
+data/energy_model_B_pca6_calendar.csv
+Confirmed shape: (3289, 18).
+Contains date, six PCA scores, nine calendar features, Total_Energy,
+and split.
+
+Use split to preserve the original training/testing assignment.
+Exclude date, Total_Energy, and split from model predictors.
+Use Total_Energy as the target.
+
+9. FRONTEND PLAN
+
+Model B can accept seven form fields:
+- Date/time
+- Floor 1 average temperature
+- Floor 2 average temperature
+- Floor 1 average relative humidity
+- Floor 2 average relative humidity
+- Outdoor temperature
+- Outdoor relative humidity
+
+The backend uses the saved scaler and PCA to create six component scores.
+Date/time generates nine calendar features.
+These together create 15 prediction-model inputs.
+
+10. CURRENT STATUS AND NEXT STEPS
+
+Completed:
+- Training/test split
+- Standardization
+- Covariance and eigenvalue/eigenvector study
+- Explained-variance and component-weight interpretation
+- Both PCA transformations
+- Calendar-input selection
+- Model A and Model B CSV exports
+
+Not yet completed:
+- Saving fitted scalers and PCA objects for frontend reuse
+- Prediction-model training and evaluation
+- Frontend implementation
+
+Important modeling issue:
+May occurs only in testing. month_5 is always zero during training,
+so a May-specific effect cannot be learned. Review month representation
+before final modeling. The data does not cover a full annual cycle.
+
+For time-series cross-validation, refit scaling and PCA within each
+training fold using the original measurements. Do not reuse PCA scores
+fitted on the entire training period across validation folds.
+
+Next stage: machine learning model training and evaluation,
+one step at a time.

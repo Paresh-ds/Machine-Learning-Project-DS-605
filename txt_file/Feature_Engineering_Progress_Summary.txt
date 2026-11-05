@@ -1,0 +1,288 @@
+DS605 HOUSEHOLD ENERGY PREDICTION
+FEATURE ENGINEERING PROGRESS SUMMARY
+Date: 5 November 2026
+
+This summary records the notebook work and outputs shared in our conversation.
+The CSV itself was not uploaded for independent inspection.
+
+1. PROJECT AND PREDICTION TASK
+
+EDA and Data Mining were completed before this stage.
+Input file: data/energy_1hour_data_mining.csv
+Original reported shape: 3,289 rows and 105 columns.
+Target: Total_Energy = Appliances + lights, measured in Wh per hour.
+
+Selected task: estimate the current hour's Total_Energy using sensor and
+weather measurements from that same hour. Hourly averages become available
+after the hour ends; this task is estimation rather than advance forecasting.
+
+2. FEATURE AUDIT AND CLEANUP
+
+Outlier-investigation flags, candidate labels, and review metadata were
+excluded from model inputs. These included energy outlier flags,
+Outlier_Status, H1_Likely_Genuine_Candidate, and other investigation labels.
+Target-derived labels could leak information about Total_Energy.
+
+Appliances and lights were excluded because their sum directly gives the
+target. Total_Energy was retained separately as y.
+
+Future-derived investigation features, including Floor_1_NextHour_Change and
+Floor_2_NextHour_Change, were excluded.
+
+An initial position-based deletion also removed useful weather columns.
+The dataset was rebuilt from the original CSV using explicit column names.
+Windspeed, Visibility, and Tdewpoint were restored.
+rv1 and rv2 were excluded from the selected input set.
+
+The rebuilt Feature Engineering dataframe had 3,289 rows, 37 columns, and
+zero missing values.
+
+3. EXISTING FEATURES RETAINED FOR REVIEW
+
+Existing features included hour, day_of_week, is_weekend, day,
+Floor_1_Temp, Floor_2_Temp, Floor_1_Temp_Diff, Floor_2_Temp_Diff,
+Floor_1_Humidity, and Floor_2_Humidity.
+
+We reused is_weekend rather than creating another weekend column.
+Weekend was treated as a possible consumption influence, not a guarantee
+of high consumption. Earlier outlier-rate tests did not establish a higher
+overall weekend outlier rate; outlier rates and mean consumption differ.
+
+4. CYCLICAL HOUR FEATURES
+
+Timestamps were parsed and sorted chronologically. The hour was extracted
+directly from date.
+
+hour_sin = sin(2*pi*hour/24)
+hour_cos = cos(2*pi*hour/24)
+
+These represent the repeating daily cycle and make 23:00 and 00:00 nearby.
+Both components are needed: sine alone gives identical values for some
+different hours. For example, 00:00 and 12:00 both have sine equal to zero,
+but cosine equals 1 and -1 respectively.
+
+Shape after this step: (3289, 39).
+
+5. AFTERNOON WINDOW FEATURE
+
+is_afternoon_peak = 1 when 15 <= hour < 19; otherwise 0.
+
+Included hourly intervals start at 15:00, 16:00, 17:00, and 18:00.
+The interval beginning at 19:00 is excluded.
+This is a proposed peak window, not a confirmed high-consumption label.
+It represents information already contained in hour in a different form.
+
+Shape after this step: (3289, 40).
+
+6. MONTH FEATURES
+
+month was extracted from date.
+One-hot indicators were created: month_2, month_3, month_4, month_5.
+January is the reference category, represented by four zeros.
+
+Example: February has month_2 = 1 and the other indicators = 0.
+These indicators avoid assuming a constant numerical effect per month.
+The raw month column was retained in df_fe for inspection, then excluded
+from X in favor of the indicators.
+
+January-May data cannot establish a full annual seasonal pattern.
+Shape after this step: (3289, 45).
+
+7. FLOOR TEMPERATURE CHANGES AND WARMING FLAG
+
+Floor_1_Temp_Change(t) = Floor_1_Temp(t) - Floor_1_Temp(t-1)
+Floor_2_Temp_Change(t) = Floor_2_Temp(t) - Floor_2_Temp(t-1)
+
+Changes were calculated only when consecutive timestamps were exactly
+one hour apart.
+
+Both_Floors_Warming = 1 if both changes are strictly positive; otherwise 0
+when changes are available.
+
+These features use current and past measurements, not future observations.
+Warming does not prove high electricity use: sunlight, outdoor conditions,
+and household activity may also affect temperature.
+The zero threshold may classify very small positive changes as warming.
+
+Initial flag counts:
+  0: 2,451 rows
+  1:   837 rows
+  Missing: 1 row
+
+The first row had no previous hour available.
+At the user's request, missing values in these three new columns were
+filled with zero. These first-row zeros are placeholders, not evidence of
+unchanged temperatures.
+
+Shape after this step: (3289, 48).
+
+8. WEEKEND-AFTERNOON INTERACTION
+
+Weekend_Afternoon = is_weekend * is_afternoon_peak
+
+The interaction equals 1 only for weekend observations in the proposed
+afternoon window. At 16:00 on a weekday it equals 0.
+
+In a linear model:
+Predicted_Energy = b0 + b1*Weekend + b2*Afternoon
+                   + b3*Weekend*Afternoon
+
+b3 allows an additional combined effect beyond the two separate effects.
+No positive effect was assumed or demonstrated at this stage.
+
+Shape after this step: (3289, 49).
+
+9. HOURLY COMPLETENESS
+
+records_per_hour was checked.
+All 3,289 hours contained six 10-minute measurements.
+Hours with a record count other than six: 0.
+
+Because records_per_hour was constant, its variance was zero.
+It was removed from df_fe.
+
+Resulting df_fe shape: (3289, 48).
+Reported total missing values: 0.
+
+10. SEPARATING INPUTS, TARGET, AND TIMESTAMPS
+
+timestamps = df_fe["date"]
+y = df_fe["Total_Energy"]
+
+The first X excluded date, Total_Energy, hour, and month.
+Initial X shape: (3289, 44).
+
+Floor_1_Temp_Diff and Floor_2_Temp_Diff were then removed from X:
+  Floor_1_Temp_Diff = Floor_1_Temp - T_out
+  Floor_2_Temp_Diff = Floor_2_Temp - T_out
+
+Their source temperatures remained, so these difference features supplied
+no new information and introduced exact linear dependence.
+They remain in df_fe for interpretation.
+
+The day column was inspected: it contained date strings, with 138 distinct
+dates. It was excluded from X because it repeated the date part of date.
+
+Final X shape: (3289, 41).
+Final y shape: (3289,).
+Non-numeric/non-Boolean predictors: none.
+
+11. FINAL 41 PREDICTORS SAVED
+
+ 1. T1
+ 2. T2
+ 3. T3
+ 4. T4
+ 5. T5
+ 6. T6
+ 7. T7
+ 8. T8
+ 9. T9
+10. RH_1
+11. RH_2
+12. RH_3
+13. RH_4
+14. RH_5
+15. RH_6
+16. RH_7
+17. RH_8
+18. RH_9
+19. T_out
+20. Press_mm_hg
+21. RH_out
+22. Windspeed
+23. Visibility
+24. Tdewpoint
+25. day_of_week
+26. is_weekend
+27. Floor_1_Temp
+28. Floor_2_Temp
+29. Floor_1_Humidity
+30. Floor_2_Humidity
+31. hour_sin
+32. hour_cos
+33. is_afternoon_peak
+34. month_2
+35. month_3
+36. month_4
+37. month_5
+38. Floor_1_Temp_Change
+39. Floor_2_Temp_Change
+40. Both_Floors_Warming
+41. Weekend_Afternoon
+
+12. CHRONOLOGICAL TRAIN-TEST SPLIT
+
+The earliest 80% of rows were assigned to training.
+The latest 20% were assigned to testing.
+No random shuffle was used.
+
+Training X: (2631, 41)
+Training period: 2016-01-11 17:00 to 2016-04-30 07:00
+
+Testing X: (658, 41)
+Testing period: 2016-04-30 08:00 to 2016-05-27 17:00
+
+Scaling and PCA must be fitted on training data only and then applied
+unchanged to testing data.
+
+13. SAVED HANDOFF FILE
+
+User-confirmed saved file: data/energy_1hour_fe_ready.csv
+Notebook-relative path used: ../data/energy_1hour_fe_ready.csv
+Confirmed shape: (3289, 43).
+
+The file contains:
+  - date: timestamp
+  - 41 predictor columns
+  - Total_Energy: target
+
+X, y, and timestamps were saved together to preserve row alignment.
+To continue in a new notebook, parse date, sort chronologically, restore
+X/y/timestamps, and recreate the same chronological 80/20 split.
+
+14. PCA PLAN -- NOT YET FITTED
+
+Planned PCA inputs: 24 original sensor and weather measurements:
+T1-T9, RH_1-RH_9, T_out, Press_mm_hg, RH_out, Windspeed,
+Visibility, Tdewpoint.
+
+Expected PCA input shapes:
+  Training: (2631, 24)
+  Testing:  (658, 24)
+
+Calendar indicators and other engineered features will remain outside this
+initial PCA. Floor averages are excluded from PCA because they are derived
+from the room measurements already included.
+
+Next learning steps:
+  1. Restore the saved dataset and split in the new notebook.
+  2. Select the 24 PCA inputs.
+  3. Explain and apply standardization fitted on training data only.
+  4. Study covariance, eigenvectors, eigenvalues, and explained variance.
+  5. Fit PCA on training data and choose a component count.
+  6. Transform test data with the fitted scaler and PCA.
+  7. Evaluate predictions with and without PCA using appropriate validation.
+
+PCA summarizes feature variance; it does not directly maximize predictive
+accuracy and does not create clusters.
+Grouping by hour, weekend, or month can be done directly using labels.
+Discovering clusters requires a separate clustering method.
+
+15. ISSUES TO RESOLVE BEFORE FINAL MODELING
+
+- month_5 is always zero during training because May occurs only in testing.
+  A model cannot learn a May-specific coefficient from this training period.
+  Month representation needs review before final modeling.
+- day_of_week is still encoded as an integer. This assumes an ordered
+  numerical effect in a simple linear model; categorical or cyclical
+  encoding can be considered.
+- Floor averages remain in the saved X alongside room measurements.
+  Review this redundancy when designing the model outside PCA.
+- The afternoon window and other hypotheses were motivated by earlier
+  exploration of this dataset. The held-out period was not fully untouched
+  by that exploration; final performance claims should acknowledge this.
+- No scaling, PCA fitting, clustering, or predictive comparison has been
+  completed in this feature-engineering conversation.
+
+END OF SUMMARY
