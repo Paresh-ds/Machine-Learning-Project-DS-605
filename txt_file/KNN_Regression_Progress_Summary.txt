@@ -1,0 +1,216 @@
+DS605 — HOUSEHOLD ENERGY CONSUMPTION PREDICTION
+KNN REGRESSION — PROGRESS SUMMARY
+Date: 06 November 2026
+
+======================================================================
+1. PROJECT OBJECTIVE
+======================================================================
+Predict hourly household Total_Energy (Wh) and investigate model
+complexity, generalization, and errors using K-Nearest Neighbors
+(KNN) Regression. Compare two PCA-based representations on the
+same chronological observations.
+
+Model A: 11 principal components from 24 room and weather features.
+Model B: 6 principal components from 6 floor/weather features plus
+         9 calendar features (15 model inputs in total).
+
+KNN prediction: y_hat(x) = (1/K) * sum of target values for the K
+nearest training observations. Euclidean distance is used after
+appropriate feature scaling.
+
+======================================================================
+2. DATA AND REPOSITORY
+======================================================================
+Feature-engineered source: data/energy_1hour_fe_ready.csv
+  Shape: (3289, 43); date + 41 input features + Total_Energy.
+Saved PCA datasets (preserved unchanged):
+  data/energy_model_A_pca11.csv            Shape: (3289, 14)
+  data/energy_model_B_pca6_calendar.csv    Shape: (3289, 18)
+
+Both saved datasets: 0 missing values, 0 duplicate rows, same dates,
+same targets and split assignments; chronological order verified.
+
+Existing split:
+  TRAIN: 2631 hours (2016-01-11 17:00 to 2016-04-30 07:00)
+  TEST:   658 hours (2016-04-30 08:00 to 2016-05-27 17:00)
+The test period was kept separate during hyperparameter selection.
+
+Model A features: PC1 ... PC11.
+Model B features: PC1 ... PC6, hour_sin, hour_cos, is_weekend,
+is_afternoon_peak, month_2, month_3, month_4, month_5,
+Weekend_Afternoon.
+Date and split are metadata, not model features.
+
+======================================================================
+3. NOTEBOOK WORKFLOW
+======================================================================
+One notebook per algorithm, with Model A and Model B evaluated in
+that same notebook. Import libraries once at the beginning of each
+notebook; use Markdown explanations followed by Python cells.
+
+KNN steps completed:
+  1. Imported libraries and loaded both saved PCA CSVs.
+  2. Checked shapes, column names, missing values, duplicates.
+  3. Verified shared chronological train/test split.
+  4. Separated X and y for both representations.
+  5. Tested K values with 5-fold expanding TimeSeriesSplit.
+  6. Plotted training and validation RMSE versus K.
+  7. Compared against a training-mean baseline.
+  8. Checked RMSE variability across time-series CV folds.
+  9. Verified original PCA notebook's train-only PCA fitting for
+     held-out test evaluation.
+ 10. Loaded original feature-engineered data and rebuilt fold-specific
+     scaling + PCA within CV to avoid feature-distribution leakage.
+ 11. Selected corrected K values and evaluated the reserved test set.
+ 12. Plotted actual versus predicted and analyzed errors by energy level.
+
+======================================================================
+4. INITIAL KNN EXPERIMENT (PRECOMPUTED PCA FEATURES)
+======================================================================
+Used 5-fold expanding-window cross-validation within the training set.
+K candidates: 1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 75, 100.
+
+Initial best average validation RMSE:
+  Model A: K = 50, RMSE = 463.86 Wh.
+  Model B: K = 20, RMSE = 448.05 Wh.
+
+Baseline (predict training-fold mean) average validation RMSE:
+  498.55 Wh for both models.
+  Initial improvement versus baseline:
+    Model A = 6.96%; Model B = 10.13%.
+
+Original fold-to-fold validation RMSE at initial best K:
+  Model A mean 463.86, std 28.41, min 428.95, max 503.32 Wh.
+  Model B mean 448.05, std 39.49, min 405.56, max 495.29 Wh.
+
+IMPORTANT: These first CV scores used PCA components fitted on the
+whole training partition. Earlier validation periods were thus exposed
+to later-period feature distributions through PCA. Treat these as
+preliminary, not the preferred leakage-free CV estimates.
+
+======================================================================
+5. PCA VERIFICATION AND LEAKAGE-FREE CROSS-VALIDATION
+======================================================================
+In PCA.ipynb, the original held-out test transformation was correct:
+fit StandardScaler and PCA on the 2631 training observations; apply
+only transform to the 658 test observations. Do not fit PCA on the
+entire 3289-row dataset or separately on test rows.
+
+For strict CV, refit preprocessing IN EACH CV TRAINING FOLD:
+  Model A:
+    original 24 room/weather features -> StandardScaler ->
+    PCA(11) -> StandardScaler -> KNN.
+  Model B:
+    6 floor/weather features -> StandardScaler -> PCA(6),
+    concatenate 9 calendar features -> StandardScaler -> KNN.
+
+Note: Model B PCA(6) from 6 original variables is a full-dimensional
+rotation, NOT dimensionality reduction. The final standardization of
+PCA/calendar features changes distance weighting compared to the
+initial experiments, so score differences cannot all be attributed
+to the removal of leakage alone.
+
+Training features prepared successfully:
+  Model A X: (2631, 24)
+  Model B X: (2631, 15)
+  y:         (2631,)
+  Targets matched saved PCA dataset: True.
+
+Corrected 5-fold time-series CV results (mean validation RMSE):
+  Model A:
+    Best K = 30, Train RMSE = 475.13 Wh,
+    Validation RMSE = 466.13 Wh, fold std = 37.13 Wh.
+  Model B:
+    Best K = 20, Train RMSE = 438.16 Wh,
+    Validation RMSE = 450.68 Wh, fold std = 43.19 Wh.
+
+Model B had 15.45 Wh (~3.31%) lower corrected CV RMSE than Model A.
+Initial vs corrected best CV RMSE:
+  A: 463.86 -> 466.13 Wh (+2.27 Wh; selected K 50 -> 30).
+  B: 448.05 -> 450.68 Wh (+2.63 Wh; selected K stayed 20).
+
+Complexity observation: K=1 produced 0 training RMSE but large
+validation error (corrected: A 657.29 Wh, B 603.96 Wh), indicating
+memorization/overfitting. Increasing K improved validation RMSE until
+about K=20-30, followed by a broad plateau. Higher K generally
+increased training error and reduced local prediction variance.
+
+======================================================================
+6. FINAL CHRONOLOGICAL TEST EVALUATION
+======================================================================
+Pipelines were fitted on all 2631 training rows at their selected K,
+then evaluated once on the 658 held-out test rows.
+
+                        Model A (K=30)       Model B (K=20)
+  MAE (Wh)                  269.984               282.002
+  MSE (Wh^2)             166137.296            181309.299
+  RMSE (Wh)                 407.599               425.804
+  R^2                         0.086                 0.002
+
+Model A had ~4.28% lower test RMSE. The ranking reversed compared
+to corrected CV (where B was better). Both test R^2 scores were low,
+so the models explained little test-set target variation relative
+to the constant test-mean comparator. This cannot, by itself, prove
+the underlying relationship is simple or complex.
+
+======================================================================
+7. ACTUAL VS PREDICTED AND ENERGY-LEVEL ERRORS
+======================================================================
+Scatterplots compared actual and predicted Total_Energy. Both models
+concentrated predictions in a narrower range than actual consumption;
+high-energy episodes (up to ~3000 Wh on test plots) tended to be
+underpredicted. Model B sometimes generated higher predictions but
+also more overprediction at low consumption.
+
+For test error analysis, low/medium/high groups were defined using
+training-target 1/3 and 2/3 quantiles; this was diagnostic grouping,
+not a KNN classification target.
+
+                          N      MAE (Wh)   RMSE (Wh)  Mean residual (Wh)
+  Model A — Low           139      192.72      225.61        -192.72
+  Model A — Medium        302      174.03      228.74        -161.25
+  Model A — High          217      453.02      631.15        +350.47
+  Model B — Low           139      213.51      328.21        -211.95
+  Model B — Medium        302      230.88      346.89        -217.10
+  Model B — High          217      397.02      559.74        +212.81
+
+Residual = actual - predicted:
+  positive -> underprediction; negative -> overprediction.
+
+Model A was better for Low and Medium groups. Model B was better
+for the High group but still systematically underpredicted it.
+Example: actual 2500 Wh, prediction 800 Wh => +1700 Wh residual.
+
+======================================================================
+8. CONCLUSIONS AND LIMITATIONS
+======================================================================
+- KNN is highly flexible at small K and clearly overfit at K=1.
+- Moderately large K gave more useful generalization in both models.
+- Calendar-enriched Model B helped average cross-validation scores,
+  but Model A was better on the held-out future time period.
+- Both models were weak at predicting high-consumption episodes.
+- KNN averages neighbor targets and can smooth out rare peaks.
+- CV performance varied across folds; environmental conditions and
+  household behavior may vary over time, but causes were not proven.
+- Final R^2 values were low: do not claim strong predictive success.
+- PCA files need not be changed; instead, refit scaler/PCA within
+  each CV training fold using original feature-engineered inputs.
+- We are predicting hourly consumption using same-time features;
+  this is not yet a demonstrated future-ahead forecasting system.
+- Avoid additional K tuning based on the held-out test set.
+
+======================================================================
+9. NEXT STEPS
+======================================================================
+1. Preserve KNN results as a baseline for comparison with other ML
+   regression algorithms; do not overwrite the held-out test evidence.
+2. Start a separate Linear Regression notebook with both model
+   representations and the same chronological split and strict CV.
+3. Compare KNN, Linear Regression, SVR, Decision Tree, Ensemble,
+   Random Forest, and Gradient Boosting using consistent metrics.
+4. Consider additional analysis of rare high-energy events and
+   temporal stability, without tuning against test results.
+
+File intended for project folder:
+  txt_file/KNN_Regression_Progress_Summary.txt
+======================================================================
