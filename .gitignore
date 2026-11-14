@@ -1,4 +1,41 @@
+
+# Python Virtual Environments
 myenv/
+venv/
+.venv/
+env/
+
+# Jupyter Notebook Temporary Files
 .ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Python Cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Environment Variables and Secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+*.pem
+
+# Testing and Cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE and Editor
+.vscode/
+.idea/
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Temporary Files
+*.log
+*.tmp
+*.bak
